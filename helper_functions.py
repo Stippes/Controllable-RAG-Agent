@@ -92,7 +92,7 @@ def split_into_chapters(book_path):
 def extract_book_quotes_as_documents(documents, min_length=50):
     quotes_as_documents = []
     # Correct pattern for quotes longer than min_length characters, including line breaks
-    quote_pattern_longer_than_min_length = re.compile(rf'“(.{{{min_length},}}?)”', re.DOTALL)
+    quote_pattern_longer_than_min_length = re.compile(rf'["“](.{{{min_length},}}?)["”]', re.DOTALL)
 
     for doc in documents:
         content = doc.page_content
@@ -101,6 +101,7 @@ def extract_book_quotes_as_documents(documents, min_length=50):
         for quote in found_quotes:
             quote_doc = Document(page_content=quote)
             quotes_as_documents.append(quote_doc)
+    print("Current quotes are ", quotes_as_documents)
     
     return quotes_as_documents
 

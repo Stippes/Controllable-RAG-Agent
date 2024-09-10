@@ -680,7 +680,7 @@ def create_task_handler_chain():
     You have the following tools at your disposal:
     Tool A: a tool that retrieves relevant information from a vector store of book chunks based on a given query.
     - use Tool A when you think the current task should search for information in the book chunks.
-    Took B: a tool that retrieves relevant information from a vector store of chapter summaries based on a given query.
+    Tool B: a tool that retrieves relevant information from a vector store of chapter summaries based on a given query.
     - use Tool B when you think the current task should search for information in the chapter summaries.
     Tool C: a tool that retrieves relevant information from a vector store of quotes from the book based on a given query.
     - use Tool C when you think the current task should search for information in the book quotes.
@@ -814,8 +814,18 @@ def run_task_handler_chain(state: PlanExecute):
     print(state["plan"])
     pprint("--------------------") 
 
-    if not state['past_steps']:
-        state["past_steps"] = []
+    # Ensure past_steps is initialized as a list - added
+    if 'past_steps' not in state or state['past_steps'] is None:
+        state['past_steps'] = []  # Initialize past_steps if not already present
+
+    # Ensure aggregated_context is initialized  - added
+    if 'aggregated_context' not in state or state['aggregated_context'] is None:
+        state['aggregated_context'] = ""  # Initialize aggregated_context if not already present
+
+        # Ensure tool is initialized - added
+    if 'tool' not in state or state['tool'] is None:
+        state['tool'] = None  # Initialize tool if not present
+
 
     curr_task = state["plan"][0]
 
@@ -1072,36 +1082,144 @@ def replan_step(state: PlanExecute):
     return state
 
 
-def can_be_answered(state: PlanExecute):
+# def can_be_answered(state: PlanExecute):
+#     """
+#     Determines if the question can be answered.
+#     Args:
+#         state: The current state of the plan execution.
+#     Returns:
+#         whether the original question can be answered or not.
+#     """
+#     state["curr_state"] = "can_be_answered_already"
+#     print("Checking if the ORIGINAL QUESTION can be answered already")
+#     pprint("--------------------")
+#     question = state["question"]
+#     context = state["aggregated_context"]
+#     inputs = {"question": question, "context": context}
+#     output = can_be_answered_already_chain.invoke(inputs)
+#     if output.can_be_answered == True:
+#         print("The ORIGINAL QUESTION can be fully answered already.")
+#         pprint("--------------------")
+#         print("the aggregated context is:")
+#         print(text_wrap(state["aggregated_context"]))
+#         print("--------------------")
+#         return "can_be_answered_already"
+#     else:
+#         print("The ORIGINAL QUESTION cannot be fully answered yet.")
+#         pprint("--------------------")
+#         return "cannot_be_answered_yet"
+
+def can_be_answered(state: PlanExecute, max_attempts=2):
     """
-    Determines if the question can be answered.
+    Determines if the question can be answered, with a limit on the number of retrieval attempts.
+    If the max_attempts limit is reached, the system will attempt to generate an answer with the
+    currently available information.
+    
     Args:
         state: The current state of the plan execution.
+        max_attempts: The maximum number of retrieval attempts allowed.
+        
     Returns:
-        whether the original question can be answered or not.
+        whether the original question can be answered based on the current context.
     """
     state["curr_state"] = "can_be_answered_already"
     print("Checking if the ORIGINAL QUESTION can be answered already")
-    pprint("--------------------")
+    
     question = state["question"]
     context = state["aggregated_context"]
+    
+    # Check if max_attempts has been exceeded
+    if len(state["past_steps"]) > max_attempts:
+        print("Max attempts reached. Providing an answer with the current information.")
+        return "can_be_answered_already"  # Force the process to move forward with available context
+
+    # Regular check to see if the question can already be answered
     inputs = {"question": question, "context": context}
     output = can_be_answered_already_chain.invoke(inputs)
+    
     if output.can_be_answered == True:
-        print("The ORIGINAL QUESTION can be fully answered already.")
-        pprint("--------------------")
-        print("the aggregated context is:")
-        print(text_wrap(state["aggregated_context"]))
-        print("--------------------")
         return "can_be_answered_already"
     else:
-        print("The ORIGINAL QUESTION cannot be fully answered yet.")
-        pprint("--------------------")
+        # If it cannot be answered yet and max_attempts not reached, continue the process
         return "cannot_be_answered_yet"
 
 
 
 def create_agent():
+    agent_workflow = StateGraph(PlanExecute)
+
+    # Add the anonymize node
+    agent_workflow.add_node("anonymize_question", anonymize_queries)
+
+    # Add the plan node
+    agent_workflow.add_node("planner", plan_step)
+
+    # Add the break down plan node
+    agent_workflow.add_node("break_down_plan", break_down_plan_step)
+
+    # Add the deanonymize node
+    agent_workflow.add_node("de_anonymize_plan", deanonymize_queries)
+
+    # Add the qualitative chunks retrieval node
+    agent_workflow.add_node("retrieve_chunks", run_qualitative_chunks_retrieval_workflow)
+
+    # Add the qualitative summaries retrieval node
+    agent_workflow.add_node("retrieve_summaries", run_qualitative_summaries_retrieval_workflow)
+
+    # Add the qualitative book quotes retrieval node
+    agent_workflow.add_node("retrieve_book_quotes", run_qualitative_book_quotes_retrieval_workflow)
+
+    # Add the qualitative answer node
+    agent_workflow.add_node("answer", run_qualtative_answer_workflow)
+
+    # Add the task handler node
+    agent_workflow.add_node("task_handler", run_task_handler_chain)
+
+    # Add answer from context node
+    agent_workflow.add_node("get_final_answer", run_qualtative_answer_workflow_for_final_answer)
+
+    # Set the entry point
+    agent_workflow.set_entry_point("anonymize_question")
+
+    # From anonymize we go to plan
+    agent_workflow.add_edge("anonymize_question", "planner")
+
+    # From plan we go to deanonymize
+    agent_workflow.add_edge("planner", "de_anonymize_plan")
+
+    # From deanonymize we go to break down plan
+    agent_workflow.add_edge("de_anonymize_plan", "break_down_plan")
+
+    # From break_down_plan we go to task handler
+    agent_workflow.add_edge("break_down_plan", "task_handler")
+
+    # From task handler we go to either retrieve or answer
+    agent_workflow.add_conditional_edges("task_handler", retrieve_or_answer, {"chosen_tool_is_retrieve_chunks": "retrieve_chunks", "chosen_tool_is_retrieve_summaries":
+                                                                            "retrieve_summaries", "chosen_tool_is_retrieve_quotes": "retrieve_book_quotes", "chosen_tool_is_answer": "answer"})
+
+    # After retrieving or answering, go directly to checking if the question can be answered
+    agent_workflow.add_conditional_edges("retrieve_chunks", can_be_answered, 
+                                         {"can_be_answered_already": "get_final_answer", 
+                                          "cannot_be_answered_yet": "break_down_plan"})
+    agent_workflow.add_conditional_edges("retrieve_summaries", can_be_answered, 
+                                         {"can_be_answered_already": "get_final_answer", 
+                                          "cannot_be_answered_yet": "break_down_plan"})
+    agent_workflow.add_conditional_edges("retrieve_book_quotes", can_be_answered, 
+                                         {"can_be_answered_already": "get_final_answer", 
+                                          "cannot_be_answered_yet": "break_down_plan"})
+    agent_workflow.add_conditional_edges("answer", can_be_answered, 
+                                         {"can_be_answered_already": "get_final_answer", 
+                                          "cannot_be_answered_yet": "break_down_plan"})
+
+    # After getting the final answer we end
+    agent_workflow.add_edge("get_final_answer", END)
+
+    plan_and_execute_app = agent_workflow.compile()
+
+    return plan_and_execute_app
+
+
+# def create_agent():
     
     agent_workflow = StateGraph(PlanExecute)
 
@@ -1135,7 +1253,7 @@ def create_agent():
     agent_workflow.add_node("task_handler", run_task_handler_chain)
 
     # Add a replan node
-    agent_workflow.add_node("replan", replan_step)
+    # agent_workflow.add_node("replan", replan_step)
 
     # Add answer from context node
     agent_workflow.add_node("get_final_answer", run_qualtative_answer_workflow_for_final_answer)
@@ -1161,14 +1279,14 @@ def create_agent():
                                                                             "retrieve_summaries", "chosen_tool_is_retrieve_quotes": "retrieve_book_quotes", "chosen_tool_is_answer": "answer"})
 
     # After retrieving we go to replan
-    agent_workflow.add_edge("retrieve_chunks", "replan")
+    # agent_workflow.add_edge("retrieve_chunks", "replan")
 
-    agent_workflow.add_edge("retrieve_summaries", "replan")
+    # agent_workflow.add_edge("retrieve_summaries", "replan")
 
-    agent_workflow.add_edge("retrieve_book_quotes", "replan")
+    # agent_workflow.add_edge("retrieve_book_quotes", "replan")
 
     # After answering we go to replan
-    agent_workflow.add_edge("answer", "replan")
+    # agent_workflow.add_edge("answer", "replan")
 
     # After replanning we check if the question can be answered, if yes we go to get_final_answer, if not we go to task_handler
     agent_workflow.add_conditional_edges("replan",can_be_answered, {"can_be_answered_already": "get_final_answer", "cannot_be_answered_yet": "break_down_plan"})

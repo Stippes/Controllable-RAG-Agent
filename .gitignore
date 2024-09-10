@@ -4,8 +4,15 @@ tests/
 venv/
 venv
 
+Harry Potter and the Sorcerers Stone.pdf
+sophisticated_rag_agent_harry_potter
+.env
 
 local_tests.py
+
+book_quotes_vectorstore/
+chapter_summaries_vector_store/
+chunks_vector_store/
 
 QA_venv/
 test_venv/
@@ -73,3 +80,4 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+sophisticated_rag_agent_harry_potter.ipynb

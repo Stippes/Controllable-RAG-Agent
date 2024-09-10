@@ -18,6 +18,9 @@ def create_network_graph(current_state):
     net = Network(directed=True, notebook=True, height="250px", width="100%")
     net.toggle_physics(False)  # Disable physics simulation
     
+
+
+    #Without the replanning - added
     nodes = [
         {"id": "anonymize_question", "label": "anonymize_question", "x": 0, "y": 0},
         {"id": "planner", "label": "planner", "x": 175*1.75, "y": -100},
@@ -28,12 +31,11 @@ def create_network_graph(current_state):
         {"id": "retrieve_summaries", "label": "retrieve_summaries", "x": 875*1.75, "y": +100},
         {"id": "retrieve_book_quotes", "label": "retrieve_book_quotes", "x": 875*1.75, "y": 0},
         {"id": "answer", "label": "answer", "x": 875*1.75, "y": -100},
-        {"id": "replan", "label": "replan", "x": 1050*1.75, "y": 0},
         {"id": "can_be_answered_already", "label": "can_be_answered_already", "x": 1225*1.75, "y": 0},
         {"id": "get_final_answer", "label": "get_final_answer", "x": 1400*1.75, "y": 0}
     ]
 
-    
+    # Remove edges referencing replan - added
     edges = [
         ("anonymize_question", "planner"),
         ("planner", "de_anonymize_plan"),
@@ -43,14 +45,48 @@ def create_network_graph(current_state):
         ("task_handler", "retrieve_summaries"),
         ("task_handler", "retrieve_book_quotes"),
         ("task_handler", "answer"),
-        ("retrieve_chunks", "replan"),
-        ("retrieve_summaries", "replan"),
-        ("retrieve_book_quotes", "replan"),
-        ("answer", "replan"),
-        ("replan", "can_be_answered_already"),
-        ("replan", "break_down_plan"),
+        ("retrieve_chunks", "can_be_answered_already"),
+        ("retrieve_summaries", "can_be_answered_already"),
+        ("retrieve_book_quotes", "can_be_answered_already"),
+        ("answer", "can_be_answered_already"),
         ("can_be_answered_already", "get_final_answer")
     ]
+
+
+
+    # nodes = [
+    #     {"id": "anonymize_question", "label": "anonymize_question", "x": 0, "y": 0},
+    #     {"id": "planner", "label": "planner", "x": 175*1.75, "y": -100},
+    #     {"id": "de_anonymize_plan", "label": "de_anonymize_plan", "x": 350*1.75, "y": -100},
+    #     {"id": "break_down_plan", "label": "break_down_plan", "x": 525*1.75, "y": -100},
+    #     {"id": "task_handler", "label": "task_handler", "x": 700*1.75, "y": 0},
+    #     {"id": "retrieve_chunks", "label": "retrieve_chunks", "x": 875*1.75, "y": +200},
+    #     {"id": "retrieve_summaries", "label": "retrieve_summaries", "x": 875*1.75, "y": +100},
+    #     {"id": "retrieve_book_quotes", "label": "retrieve_book_quotes", "x": 875*1.75, "y": 0},
+    #     {"id": "answer", "label": "answer", "x": 875*1.75, "y": -100},
+    #     {"id": "replan", "label": "replan", "x": 1050*1.75, "y": 0},
+    #     {"id": "can_be_answered_already", "label": "can_be_answered_already", "x": 1225*1.75, "y": 0},
+    #     {"id": "get_final_answer", "label": "get_final_answer", "x": 1400*1.75, "y": 0}
+    # ]
+
+    
+    # edges = [
+    #     ("anonymize_question", "planner"),
+    #     ("planner", "de_anonymize_plan"),
+    #     ("de_anonymize_plan", "break_down_plan"),
+    #     ("break_down_plan", "task_handler"),
+    #     ("task_handler", "retrieve_chunks"),
+    #     ("task_handler", "retrieve_summaries"),
+    #     ("task_handler", "retrieve_book_quotes"),
+    #     ("task_handler", "answer"),
+    #     ("retrieve_chunks", "replan"),
+    #     ("retrieve_summaries", "replan"),
+    #     ("retrieve_book_quotes", "replan"),
+    #     ("answer", "replan"),
+    #     ("replan", "can_be_answered_already"),
+    #     ("replan", "break_down_plan"),
+    #     ("can_be_answered_already", "get_final_answer")
+    # ]
     
     # Add nodes with conditional coloring
     for node in nodes:
@@ -161,6 +197,9 @@ def execute_plan_and_print_steps(inputs, plan_and_execute_app, placeholders, gra
     step = 0
     previous_state = None
     previous_values = {key: None for key in placeholders}
+
+    if 'past_steps' not in inputs: # added
+        inputs['past_steps'] = []  # Initialize past_steps if missing
 
     try:
         for plan_output in plan_and_execute_app.stream(inputs, config=config):
