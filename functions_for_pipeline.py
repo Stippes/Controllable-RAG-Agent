@@ -19,16 +19,19 @@ from typing import List, TypedDict
 ### Helper functions for the notebook
 from helper_functions import escape_quotes, text_wrap
 
-
+import Credentials as Credentials
+Credentials.init()
 
 """
 Set the environment variables for the API keys.
 """
-load_dotenv()
+# load_dotenv()
 os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "100000"
-os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
-groq_api_key = os.getenv('GROQ_API_KEY')
+# os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
+# groq_api_key = os.getenv('GROQ_API_KEY')
 
+# os.environ["OPENAI_API_KEY"] = Credentials.keys['openai_key']
+# groq_api_key = Credentials.keys['GROQ_API_KEY']
 
 
 def create_retrievers():
@@ -137,11 +140,11 @@ def keep_only_relevant_content(state):
     return {"relevant_context": relevant_content, "context": context, "question": question}
 
 
-def create_question_answer_from_context_cot_chain():
+def create_question_answer_from_context_cot_chain(max_tokens=3000):
     class QuestionAnswerFromContext(BaseModel):
         answer_based_on_content: str = Field(description="generates an answer to a query based on a given context.")
 
-    question_answer_from_context_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    question_answer_from_context_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=max_tokens)
 
 
     question_answer_cot_prompt_template = """ 
@@ -195,7 +198,7 @@ def create_question_answer_from_context_cot_chain():
     question_answer_from_context_cot_chain = question_answer_from_context_cot_prompt | question_answer_from_context_llm.with_structured_output(QuestionAnswerFromContext)
     return question_answer_from_context_cot_chain
 
-question_answer_from_context_cot_chain = create_question_answer_from_context_cot_chain()
+question_answer_from_context_cot_chain = create_question_answer_from_context_cot_chain(max_tokens=3000)
 
 def answer_question_from_context(state):
     """
@@ -207,7 +210,7 @@ def answer_question_from_context(state):
         chain: The LLMChain instance.
 
     Returns:
-        The answer to the question from the context.
+        The answer to the question from the context. The answer should be detailed and in the same style of language as the input. 
     """
     question = state["question"]
     context = state["aggregated_context"] if "aggregated_context" in state else state["context"]
@@ -1109,7 +1112,7 @@ def replan_step(state: PlanExecute):
 #         pprint("--------------------")
 #         return "cannot_be_answered_yet"
 
-def can_be_answered(state: PlanExecute, max_attempts=2):
+def can_be_answered(state: PlanExecute, max_attempts=3):
     """
     Determines if the question can be answered, with a limit on the number of retrieval attempts.
     If the max_attempts limit is reached, the system will attempt to generate an answer with the
@@ -1142,7 +1145,6 @@ def can_be_answered(state: PlanExecute, max_attempts=2):
     else:
         # If it cannot be answered yet and max_attempts not reached, continue the process
         return "cannot_be_answered_yet"
-
 
 
 def create_agent():
