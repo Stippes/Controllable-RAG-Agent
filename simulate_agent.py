@@ -4,6 +4,9 @@ import streamlit as st
 import streamlit.components.v1 as components
 from functions_for_pipeline import *
 
+import Credentials as Credentials
+Credentials.init()
+
 
 def create_network_graph(current_state):
     """
@@ -39,7 +42,7 @@ def create_network_graph(current_state):
     edges = [
         ("anonymize_question", "planner"),
         ("planner", "de_anonymize_plan"),
-        ("de_anonymize_plan", "break_down_plan"),
+        ("de_anonymize_plan", "break_down_plan"),   
         ("break_down_plan", "task_handler"),
         ("task_handler", "retrieve_chunks"),
         ("task_handler", "retrieve_summaries"),
